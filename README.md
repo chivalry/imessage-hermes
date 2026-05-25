@@ -1,68 +1,73 @@
 # imessage-hermes
 
-Operational record for routing iMessage through a [BlueBubbles](https://bluebubbles.app) server on a Mac, over a reverse SSH tunnel, into a [Hermes](https://github.com/NousResearch/hermes) agent running on a remote VPS.
+> **⚠️ ABANDONED — do not use as a how-to.**
+>
+> This repo documents an attempt to route iMessage through a BlueBubbles +
+> reverse-SSH-tunnel bridge into a [Hermes](https://github.com/NousResearch/hermes)
+> agent on a remote VPS. The setup almost works, but hits a hard architectural
+> wall that makes it impractical for the most common use case (one person
+> messaging their own agent). See [`POSTMORTEM.md`](POSTMORTEM.md) for the
+> full write-up and the alternatives.
+>
+> Kept public because the analysis may save someone else the same dead end.
 
-This repository is not a piece of software you install. It is the documentation, config artifacts, and rebuild instructions for one person's personal infra. The goal: if the laptop or the VPS is wiped tomorrow, the system can be re-stood-up in under an hour by following the runbook.
+---
 
-## Why this exists
+## What this was trying to do
 
-Apple does not publish an iMessage API. Any "AI agent in iMessage" integration requires a Mac signed into the target Apple ID to sit in the loop and relay messages. The common approaches use a third-party tunnel service (Cloudflare Tunnel, ngrok, Tailscale) to expose the bridge to whichever machine the agent runs on. This project instead reuses the user's existing SSH connection to the VPS as the transport — no third-party tunnel service, nothing exposed to the public internet, no new accounts.
+Let a Hermes agent running on a remote VPS receive and respond to iMessages
+sent from the user's iPhone, using the user's existing Mac as the iMessage
+bridge — without exposing anything to the public internet, without using a
+third-party tunnel service, and without giving the agent any access to the
+Mac beyond the BlueBubbles HTTP API.
 
-## Architecture (one-line version)
+## Why it didn't work (one-line version)
 
-```
-iPhone/iPad/Mac → iMessage (Apple servers) → MacBook (BlueBubbles Server, localhost:1234)
-                                                  │
-                                                  └── reverse SSH tunnel ──┐
-                                                                            ▼
-                                                                       VPS (avalon)
-                                                                       localhost:1234
-                                                                            │
-                                                                            ▼
-                                                                       Hermes gateway
-                                                                       (bluebubbles platform)
-```
+The BlueBubbles gateway adapter filters out messages where `is_from_me=true`
+(to prevent the agent from looping on its own outgoing messages). When the
+user and the bridge Mac are signed into the **same** Apple ID, every iMessage
+the user sends to themselves is marked `is_from_me=true` on the bridge, and
+the adapter silently drops it. Nothing reaches the agent.
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the detailed picture and the trade-offs that were considered and rejected.
+The workaround — sign a second Apple ID into Messages on the Mac — used to
+be straightforward on macOS but is no longer supported (Apple removed
+multi-iMessage-account support several macOS versions ago). The remaining
+options (separate macOS user account, patched Hermes source, dedicated
+hardware) all violate the "minimal Mac involvement" goal that motivated
+the design.
 
-## Components
+See [`POSTMORTEM.md`](POSTMORTEM.md) for the full timeline, what was
+tried, what was learned, and what the right alternatives are.
 
-| Where | What | Role |
-|-------|------|------|
-| MacBook (Apple Silicon, macOS) | BlueBubbles Server | Talks to iMessage via AppleScript / private bits; exposes an HTTP API on `localhost:1234` |
-| MacBook | `autossh` + LaunchAgent | Maintains a reverse SSH tunnel to the VPS; auto-restarts on network blips and reboot |
-| VPS (`avalon`, Ubuntu 24.04, DigitalOcean) | sshd | Accepts the tunnel; binds `127.0.0.1:1234` on the VPS to BlueBubbles on the laptop |
-| VPS | Hermes | Reads `~/.hermes/config.yaml`, talks to `http://127.0.0.1:1234` as if BlueBubbles were local |
+## What got built before the wall
 
-## Status
+Most of the infrastructure works fine — the architectural problem is
+specifically about self-messaging on one Apple ID, not about the
+transport. As built:
 
-Setup in progress. See [`RUNBOOK.md`](RUNBOOK.md) (once it exists) for step-by-step. Current step tracker:
+- BlueBubbles Server on the Mac (running, authenticated, on `localhost:1234`)
+- autossh-driven reverse SSH tunnel from Mac → VPS, wrapped in a
+  LaunchAgent for durability
+- Bidirectional forwarding (`-R 1234:127.0.0.1:1234 -L 8645:127.0.0.1:8645`)
+  so the VPS can both reach BlueBubbles and receive its webhooks
+- VPS-side environment configured with the BlueBubbles password
 
-- [ ] BlueBubbles Server installed on MacBook
-- [ ] Reverse SSH tunnel verified working manually
-- [ ] LaunchAgent installed and surviving reboot
-- [ ] Hermes `bluebubbles` platform block configured
-- [ ] End-to-end test: iMessage from iPhone reaches Hermes and gets a reply
+The tunnel design itself (`ARCHITECTURE.md`) is sound and reusable if you
+ever want to expose a different localhost service from a Mac to a VPS
+without a third-party tunnel. The dead end is specifically about the
+iMessage half.
 
-## Layout
+## Repo contents
 
 ```
 imessage-hermes/
 ├── README.md           # this file
-├── ARCHITECTURE.md     # the picture + decisions
-├── RUNBOOK.md          # step-by-step rebuild (TBD)
-├── laptop/             # everything that lives on the MacBook
-│   └── (TBD: launchd plist, install notes, BlueBubbles settings export)
-├── vps/                # everything that lives on the VPS
-│   └── (TBD: hermes-config.example.yaml, sshd notes)
+├── POSTMORTEM.md       # why it was abandoned, what to do instead
+├── ARCHITECTURE.md     # the tunnel design (still useful as a pattern)
 ├── docs/
-│   └── decisions.md    # ADR-lite log: why autossh over Tailscale, etc.
+│   └── decisions.md    # ADR-style log of choices made during planning
 └── LICENSE
 ```
-
-## Secrets
-
-Nothing in this repo is a secret. The BlueBubbles password, GitHub PAT, and any API keys live in `.env` files outside the repo and are referenced as `<REPLACE_ME>` placeholders in any committed config.
 
 ## License
 

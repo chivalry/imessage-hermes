@@ -53,3 +53,15 @@ Short ADR-style entries. Each captures *what* was decided, *when*, and *why* —
 **Decision:** Authoritative working clone lives on the VPS at `~/imessage-hermes`. The MacBook clones on-demand when a step needs a local file (e.g. dropping the LaunchAgent plist into place).
 
 **Why:** Hermes (running on the VPS) is the entity making most of the edits during setup. VPS-primary minimizes round-trips through the user.
+
+---
+
+## 2026-05-25 — Project abandoned
+
+**Decision:** Stop pursuing the BlueBubbles + reverse-SSH-tunnel approach. Switch to a non-iMessage chat channel (Telegram or similar) for the agent.
+
+**Why:** The BlueBubbles platform adapter unconditionally filters out messages where `is_from_me=true` to prevent agent reply loops. With user and bridge Mac on the same Apple ID, every self-message is marked `is_from_me=true` and never reaches Hermes. The historical workaround (sign a second Apple ID into Messages.app) no longer works because modern macOS allows only one iMessage account per system user. Remaining workarounds (second macOS user, patched Hermes source, dedicated hardware) all violate the original "minimal Mac involvement" goal that motivated the VPS deployment.
+
+See [`POSTMORTEM.md`](../POSTMORTEM.md) for full reasoning, what was tried, and the right alternative patterns.
+
+**What still has value:** The reverse-SSH-tunnel pattern in [`ARCHITECTURE.md`](../ARCHITECTURE.md) is reusable for any "expose a Mac localhost service to a VPS without a third-party tunnel" use case. The dead end is specifically the iMessage half.
