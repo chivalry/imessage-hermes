@@ -1,0 +1,22 @@
+# Never commit real secrets or per-machine config
+.env
+.env.*
+!.env.example
+
+# Real config files — only the .example variants are committed
+*.local.yaml
+*.local.json
+hermes-config.yaml
+bluebubbles-settings.json
+
+# Editor / OS noise
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Python (in case any helper scripts get added)
+__pycache__/
+*.pyc
+.venv/
+venv/
